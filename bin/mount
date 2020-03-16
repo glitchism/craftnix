@@ -1,0 +1,7 @@
+printf("Currently mounted:\n")
+
+local list = stddisk.getMountList()
+
+for name,data in pairs(list) do
+  printf("  %s on %s [type %s]\n",data.label,data.path,data.type)
+end

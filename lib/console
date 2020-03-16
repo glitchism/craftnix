@@ -1,0 +1,96 @@
+console = {}
+console.__index = console
+local TAB_WIDTH = 4
+
+function console.create_hw()
+  w, h = term.getSize()
+  local con = console.create(w, h)
+  con.x, con.y = term.getCursorPos()
+  con.x = con.x - 1
+  con.y = con.y - 1 -- adapting for the unix format
+  con.writeCharInternal = function(chr) term.write(chr) end
+  con.gotoXYInternal = function(x,y) term.setCursorPos(x+1,y+1) end
+  con.clearInternal = function() term.clear() end
+  con.scroll = function(lines) term.scroll(lines) end
+  con.blink = function(a) term.setCursorBlink(a) end
+  con.setTextColor = function(col) if term.isColor() == true then term.setTextColor(col) end end
+  con.setBgColor = function(col) if term.isColor() == true then term.setBackgroundColor(col) end end
+  return con
+end
+
+function console.create_monitor(mon)
+end
+
+function console.create(w, h)
+  local con = {}
+  setmetatable(con,console)
+  con.w = w
+  con.h = h
+  con.x = 0
+  con.y = 0
+  con.writeCharInternal = function(chr) end
+  con.gotoXYInternal = function(x,y) end
+  con.scroll = function(lines) end
+  con.blink = function(a) end
+  con.setTextColor = function(col) end
+  con.setBgColor = function(col) end
+  return con
+end
+
+function console:gotoXY(x,y) self.x = x self.y = y self.gotoXYInternal(x,y) end
+function console:getXY() return x, y end
+function console:clear() self.clearInternal() self:gotoXY(0,0) end
+function console:moveDown()
+  if self.y+1 == self.h then
+    self.scroll(1)
+  else
+    self.y = self.y + 1
+  end
+  self.x = 0
+  self:gotoXY(self.x,self.y)
+end
+function console:setChar(x,y,chr)
+  if self.setCharInternal ~= nil then self.setCharInternal(x,y,chr)
+  else
+    oldx = self.x
+    oldy = self.y
+    self:gotoXY(x,y)
+    self.writeCharInternal(chr)
+    self:gotoXY(oldx,oldy)
+  end
+end
+function console:writeChar(chr)
+  local swc = string.byte(chr)
+  if swc == 10 then self:moveDown()
+  elseif swc == 9 then
+    local newx = (self.x + TAB_WIDTH - (self.x % TAB_WIDTH))
+    if newx >= self.w then
+      self:moveDown()
+    else
+      self:gotoXY(newx,self.y)
+    end
+  elseif swc == 8 then
+    if self.x == 0 then
+      if self.y == 0 then return end
+      self:gotoXY(self.w-1,self.y-1)
+    else
+      self:gotoXY(self.x-1,self.y)
+    end
+    self.writeCharInternal(" ")
+    self.gotoXYInternal(self.x,self.y) -- fix term.write moving the cursor
+  else
+    if (self.x+1) == self.w then
+      self.x = 0
+      self:moveDown()
+    end
+    self.writeCharInternal(chr)
+    self.x = self.x + 1
+  end
+end
+function console:putc(ch) self:writeChar(string.sub(ch,1,1)) end
+function console:puti(inp) self:putc(string.char(inp)) end
+function console:write(str)
+  for i=1,#str do
+    self:writeChar(string.sub(str,i,i))
+  end
+end

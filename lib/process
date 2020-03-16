@@ -1,0 +1,111 @@
+process = {}
+process.__index = process
+procList = {}
+
+lastProcId = 1
+process.MAX_PROCS = 64
+process.NEXT_GC = 0
+procSleepTime = 0.05
+lock_create = 0
+
+function process.getProcById(id)
+  return procList[id]
+end
+
+function process.alive(id)
+  return (procList[id] ~= nil and procList[id]:getStatus() ~= "dead")
+end
+
+function process.running(id)
+  return (procList[id] ~= nil and procList[id]:getStatus() == "running")
+end
+
+function process.suspended(id)
+  return (procList[id] ~= nil and procList[id]:getStatus() == "suspended")
+end
+
+function process.gc()
+  for id=1,process.MAX_PROCS do
+    if(procList[id] ~= nil) then
+      local status = procList[id]:getStatus()
+      if(status == "dead") then
+        -- print("Killing process " .. id)
+        procList[id] = nil
+      elseif(status == "suspended") then
+	-- print("Attempting revival for " .. id)
+        -- TODO: Sort the times so that all processes get handled equally.
+        if(procList[id].comsg == nil or (procList[id].comsg == "sleep" and procSleepTime>=procList[id].coarg)) then
+          -- print("Unsuspending process " .. id)
+          procList[id].comsg = nil
+          procList[id]:exec()
+        elseif(procList[id].comsg == "sleep") then
+          procList[id].coarg = procList[id].coarg - procSleepTime
+        end
+      end
+    end
+  end
+  process.NEXT_GC = os.startTimer(0.05);
+end
+
+function process.add_list(proc)
+  local maxProcId = lastProcId - 1
+  if(maxProcId == 0) then
+    maxProcId = process.MAX_PROCS
+  end
+  local found = 0
+  while(lastProcId~=maxProcId and found == 0) do
+    if(procList[lastProcId] == nil) then
+      procList[lastProcId] = proc
+      found = lastProcId
+    end
+    lastProcId = lastProcId + 1
+    if(lastProcId > process.MAX_PROCS) then
+      lastProcId = 1
+    end
+  end
+  if(lastProcId == maxProcId) then
+    print("FATAL ERROR: NO MORE PROCESSES")
+    return -1
+  else
+    return found
+  end
+end
+
+function process.create(cwd)
+  local proc = {}
+  setmetatable(proc,process)
+  proc.cwd = cwd
+  proc.shell_run = coroutine.create(
+		function(env, cwd, args)
+			if args ~= nil then os.run(env, cwd, unpack(args))
+                        else os.run(env, cwd) end
+		end
+	)
+  proc.id = process.add_list(proc)
+  if(proc.id == -1) then
+    return nil
+  else
+    return proc
+  end
+end
+
+function process:getStatus()
+  if self.shell_run ~= nil then return coroutine.status(self.shell_run) else return "dead" end
+end
+
+function process:exec(workdir, args, user, astdin, astdout)
+  user = user or PROC_USER
+  astdin = astdin or stream.get("stdin")
+  astdout = astdout or stream.get("stdout")
+  workdir = workdir or "/"
+  args = args or nil
+  local env = getfenv()
+  env.PROC_ID = self.id env.PROC_EXD = self.cwd env.PROC_CWD = workdir
+  env.PROC_USER = user
+  env.stdin = astdin env.stdout = astdout
+  self.coerr, self.comsg, self.coarg = coroutine.resume(self.shell_run,env,self.cwd,args)
+end
+
+function process:isAlive() return (self ~= nil and self:getStatus() ~= "dead") end
+function process:isRunning() return (self ~= nil and self:getStatus() == "running") end
+function process:isSuspended() return (self ~= nil and self:getStatus() == "suspended") end

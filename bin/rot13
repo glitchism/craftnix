@@ -1,0 +1,18 @@
+local cwd = PROC_CWD
+local args = { ... }
+local strin = stdin
+local strout = stdout
+if #args == 2 then
+  local loc = stddisk.fixPath(cwd,args[2])
+  strin = stream.create_file(loc,"r") 
+end
+while not strin:isEof() do
+  while strin:isFull() and not strin:isEof() do
+    local gett = strin:geti()
+	if (gett >= 65 and gett < 78) or (gett >= 97 and gett < 110) then gett = gett + 13
+	elseif (gett >= 78 and gett <= 90) or (gett >= 110 and gett <= 122) then gett = gett - 13 end
+    if gett > 0 or strout.type ~= "memory" then strout:puti(gett) end
+  end
+  waitTick()
+end
+strin:close()

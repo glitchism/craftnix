@@ -1,0 +1,7 @@
+  printf("\nID\t| Command\n------------------\n")
+  for i=1,process.MAX_PROCS do
+    local p = process.getProcById(i)
+    if p ~= nil then printf("%d\t| %s\n",p.id,p.cwd) end
+  end
+  printf("\n")
+

@@ -1,0 +1,23 @@
+local INIT_VERSION = 0.02
+
+printf("INIT version %f\n", INIT_VERSION)
+
+printf("Pre-configuring system ")
+-- Configure env variables
+HOSTNAME = "none"
+
+printf("[DONE]\nReading shell from /etc/shells ")
+
+local str = stream.create_file("/etc/shells","r")
+if str == nil then printf("[FAIL]\n") return end
+local INIT_APP = str:gets()
+if INIT_APP == nil or INIT_APP == "" or fs.exists(INIT_APP) == false then printf("[FAIL]\n") return end
+
+printf("[DONE]\nBooting into single-user mode, shell %s\n\n", INIT_APP)
+
+local proc = process.create(INIT_APP)
+proc:exec("/",nil,"root",stdin,stdout)
+
+while true do
+  sleep(3)
+end

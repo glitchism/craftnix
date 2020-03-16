@@ -1,0 +1,134 @@
+local cwd = PROC_CWD
+local dirs = {}
+local dotfiles = {}
+local size = {}
+local drive = {}
+local readonly = {}
+local outnames = {}
+local maxLen = 0
+local maxSizeLen = 0
+local con = stdout.wstr
+local width = 1
+local options = {}
+if con ~= nil then width = con.w
+else options.oneline = true end
+local amount = width
+local args = { ... }
+local dirparam = nil
+
+function printHelp()
+  printf("Usage: ls [OPTION]... [DIR]...\n")
+  printf(" -1         print one file per line\n")
+  printf(" -a         don't ignore entries starting with .\n")
+  printf(" -h, --human-readable\n")
+  printf("            print sizes in human-readable format\n")
+  printf(" --si       in -h, use powers of 1000, not 1024\n")
+  printf(" --help     print the help message\n")
+  printf(" -l         long, detailed listing\n")
+  printf(" -r         reverse order\n")
+  printf(" -S, --size sort by size\n")
+end
+
+function humanSize(size)
+  local mul = 1024 if options.humanSizeSi == true then mul = 1000 end
+  if(size<mul) then return size .. "B"
+  elseif(size<(mul*mul)) then return math.floor(size/mul) .. "K"
+  elseif(size<(mul*mul*mul)) then return math.floor(size/mul/mul) .. "M"
+  else return math.floor(size/mul/mul/mul) .. "G" end
+end
+
+-- Parse cwd.
+for i=2,#args do
+  if string.sub(args[i],1,1) == "-" then
+    local arg = args[i]
+    if arg == "--size" then options.sortBySize = true
+    elseif arg == "--help" then printHelp() return
+    elseif arg == "--human-readable" then options.humanSize = true
+    elseif arg == "--si" then options.humanSizeSi = true
+    else
+      for j=2,#arg do
+        local arch = string.sub(arg,j,j)
+        if arch == "a" or arch == "a" then options.dotfiles = true
+        elseif arch == "1" then options.oneline = true
+        elseif arch == "h" then options.humanSize = true
+        elseif arch == "l" then options.oneline, options.longview = true, true
+        elseif arch == "r" then options.reverseOrder = true
+        elseif arch == "S" then options.sortBySize = true
+        elseif arch == "h" then printHelp() return
+        else
+          printf("ls: invalid argument -%s\n",string.sub(arg,j))
+          return
+        end
+      end
+    end
+  else dirparam = args[i] end
+end
+
+function padSpaces(str,len,atRight,fil)
+  atRight = atRight or false
+  fil = fil or " "
+  local spaces = len-#str
+  local str2 = str
+  for i=1,spaces do if atRight == true then str2 = " "..str2 else str2 = str2.." " end end
+  return str2
+end
+
+if dirparam ~= nil then
+  if (string.sub(dirparam,1,1) == "/") and fs.isDir(dirparam) then cwd = dirparam
+  elseif fs.isDir(("/" .. fs.combine(cwd,dirparam))) then cwd = "/" .. fs.combine(cwd,dirparam)
+  else printf("ls: invalid directory\n") return end
+end
+
+local list = fs.list(cwd)
+
+for _,file in ipairs(list) do
+  if #file > maxLen then maxLen = #file end
+  if fs.isDir(fs.combine(cwd,file)) then dirs[file] = true else dirs[file] = false end
+  drive[file] = fs.getDrive(fs.combine(cwd,file))
+  readonly[file] = fs.isReadOnly(fs.combine(cwd,file))
+  size[file] = fs.getSize(fs.combine(cwd,file))
+  if options.humanSize == true then size[file] = humanSize(size[file]) end
+  local sl = "" .. size[file]
+  if #sl > maxSizeLen then maxSizeLen = #sl end
+
+  if options.dotfiles == true then dotfiles[file] = false
+  else if string.sub(file,1,1) == "." then dotfiles[file] = true else dotfiles[file] = false end end
+end
+
+if options.sortBySize == true then table.sort(list, function(n1, n2)
+  if options.reverseOrder == true then return size[n1] > size[n2]
+  else return size[n1] <= size[n2] end end)
+else table.sort(list, function(n1, n2)
+  local tmp = true
+  if dirs[n1] == true and dirs[n2] == false then tmp = true
+  elseif dirs[n1] == false and dirs[n2] == true then tmp = false
+  else tmp = n1 <= n2 end
+  if options.reverseOrder == true then tmp = not tmp end return tmp end) end
+
+maxLen = maxLen + 1 -- count in space
+amount = math.floor(width / maxLen)
+
+-- Generate out filenames.
+for _,file in ipairs(list) do
+  outnames[file] = file
+  if options.oneline == true then outnames[file] = file .. "\n"
+  if options.longview == true then
+    local prefix = ""
+    if dirs[file] == true then prefix = prefix .. "dr" else prefix = prefix .. "-r" end
+    if readonly[file] == true then prefix = prefix .. "-" else prefix = prefix .. "w" end
+    prefix = prefix .. "x " .. padSpaces(("" .. size[file]),maxSizeLen,true) .. " "
+    outnames[file] = prefix .. outnames[file]
+  end
+  else outnames[file] = padSpaces(outnames[file],maxLen) end
+end
+
+i = 0
+
+for _,file in ipairs(list) do
+  if dotfiles[file] == false then
+    printf("%s",outnames[file])
+    i = i + 1
+    if (i % amount == 0) and options.oneline ~= true then printf("\n") end
+  end
+end
+if (i % amount ~= 0) and options.oneline ~= true then printf("\n") end

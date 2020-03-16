@@ -1,0 +1,8 @@
+local cwd = PROC_CWD
+local args = { ... }
+
+if #args == 3 then
+  local nsrc, ndst = stddisk.fixPath(cwd,args[2]), stddisk.fixPath(cwd,args[3])
+  if not fs.exists(nsrc) then printf("mv: file does not exist\n") return end
+  fs.move(nsrc,ndst)
+else printf("mv: not enough arguments\n") return end

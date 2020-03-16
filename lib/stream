@@ -1,0 +1,118 @@
+local ioStreams = {}
+Stream = {}
+Stream.__index = Stream
+stream = {}
+
+function stream.create_memory(name, check_get)
+  check_get = check_get or true
+  if (stream.get(name) ~= nil) and check_get then return stream.get(name) end
+  local str = {}
+  setmetatable(str,Stream)
+  str.name = name
+  str.type = "memory"
+  str.buffer  = {}
+  str.closed = false
+  str.isEof = function(self) return str.closed end
+  str.geti = function(self)
+    while #self.buffer == 0 do
+      waitTick()
+    end
+    local t = table.remove(self.buffer, 1)
+    return t
+  end
+  str.puti = function(self, ai)
+    table.insert(self.buffer, ai)
+  end
+  str.clear = function(self) self.buffer = {} end
+  str.close = function(self) self.closed = true self.buffer = {} end
+  str.isFull = function(self) return (#self.buffer > 0) end
+  if check_get then ioStreams[name] = str end
+  return str
+end
+
+function stream.create_file(filename, mode)
+  mode = mode .. "b"
+  if (mode ~= "rb" and mode ~= "wb" and mode ~= "ab") then return nil end
+  local name = "file:" .. filename
+  if (stream.get(name) ~= nil) then return stream.get(name) end
+  local str = {}
+  setmetatable(str,Stream)
+  str.name = name
+  str.type = "file"
+  str.handle = fs.open(filename, mode)
+  str.noEof = true
+  str.isEof = function(self) return not self.noEof end
+  str.clear = function() end
+  str.close = function(self) self.handle.close() ioStreams[self.name] = nil self = nil end
+  if mode == "rb" then
+    str.geti = function(self)
+      if str.noEof == false then return 0 end
+      local t = self.handle.read()
+      if t == nil then str.noEof = false return 0
+      else return t end
+    end
+  else str.geti = function(self) return 0 end end
+  if mode == "wb" or mode == "ab" then
+    str.puti = function(self, ai)
+      self.handle.write(ai)
+    end
+  else str.puti = function(self,ai) end end
+  if mode == "rb" then str.isFull = function(self) return self.noEof end
+  else str.isFull = function(self) return false end end
+  ioStreams[name] = str
+  return str
+end
+
+function stream.link_read(stream, linked_stream)
+  if str == nil or linked_str == nil then return end
+  stream.oldgeti = stream.geti
+  stream.rstr = linked_stream
+  stream.geti = function(self) return self.rstr:geti() end
+end
+
+function stream.link_write(str, linked_str, echo)
+  if str == nil or linked_str == nil then return end
+  echo = echo or false
+  str.oldputi = str.puti
+  str.wstr = linked_str
+  if echo == true then str.puti = function(self, ai) self:oldputi(ai) self.wstr:puti(ai) end
+  else str.puti = function(self, ai) self.wstr:puti(ai) end end
+end
+
+function stream.unlink_read(str) if(str.oldgeti ~= nil) then str.geti = str.oldgeti local t = str.rstr str.rstr = nil return t end end
+function stream.unlink_write(str) if(str.oldputi ~= nil) then str.puti = str.oldputi local t = str.wstr str.wstr = nil return t end end
+
+function stream.get(name)
+  return ioStreams[name]
+end
+
+function Stream:getc()
+  return string.char(self:geti())
+end
+
+function Stream:gets(delim)
+  delim = delim or 10
+  lastchar = 0
+  str = ""
+  while lastchar ~= delim do
+    while not self:isFull() do waitTick() end
+    while self:isFull() and lastchar ~= delim do
+      lastchar = self:geti()
+      if lastchar == 8 then
+        local remchar = string.byte(string.sub(str,-2,-1))
+        str = string.sub(str,1,-2)
+      elseif lastchar ~= delim then
+        str = str .. string.char(lastchar)
+      end
+    end
+  end
+  return str
+end
+
+function Stream:putc(c)
+  self:puti(string.byte(c))
+end
+
+stream.stdin = stream.create_memory("stdin")
+stream.stdout = stream.create_memory("stdout")
+stream.stderr = stream.create_memory("stderr")

@@ -1,0 +1,142 @@
+local homeDir = "/root"
+local workDir = homeDir
+local stdin, stdout, stderr = stream.get("stdin"), stream.get("stdout"), stream.get("stderr")
+
+con = stdout.wstr
+-- con:clear()
+local builtinCommands = {}
+
+builtinCommands["echo"] = function(args)
+  for i=2,#args do
+    printf(args[i])
+    if i ~= #args then printf(" ") end
+  end
+  printf("\n")
+end
+builtinCommands["whoami"] = function(args) printf("%s\n",PROC_USER) end
+builtinCommands["cd"] = function(args)
+  if #args<2 then
+    printf("assh: cd: missing parameter\n")
+  else
+    if string.sub(args[2],1,1) == "~" then args[2] = string.gsub(args[2], "~", homeDir) end
+    if string.sub(args[2],1,1) == "/" and fs.isDir(args[2]) then
+      workDir = args[2]
+    elseif fs.isDir("/" .. fs.combine(workDir,args[2])) then
+      workDir = "/" .. fs.combine(workDir,args[2])
+    else
+      printf("assh: cd: invalid directory\n")
+    end
+  end
+end
+builtinCommands["clear"] = function(args)
+  con:clear()
+end
+
+function parseDir(dir)
+  if string.find(dir,homeDir) ~= nil and string.find(dir,homeDir) <= 1 then
+    return string.gsub(dir, homeDir, "~") 
+  else return dir end
+end
+
+function findRedirect(args, kw)
+  for i=#args-3,#args-1 do
+    if args[i] ~= nil and args[i+1] ~= nil then
+      if args[i] == kw then
+        local t = args[i+1]
+        local newargs = args
+        newargs[i], newargs[i+1] = nil, nil
+        return newargs, t
+      end
+    end
+  end
+  return args, nil
+end
+
+function execute(cmd, args, stdin_def, stdout_def)
+  local args, in_redirect = findRedirect(args, "<")
+  local args, out_redirect = findRedirect(args, ">") 
+  local new_stdin = stdin_def or stdin
+  local new_stdout = stdout_def or stdout
+  if in_redirect ~= nil then new_stdin = stream.create_file(stddisk.fixPath(PROC_CWD,in_redirect),"r") end
+  if out_redirect ~= nil then new_stdout = stream.create_file(stddisk.fixPath(PROC_CWD,out_redirect),"w") end
+  local proc = process.create(cmd)
+  proc:exec(workDir,args,PROC_USER,new_stdin,new_stdout)
+  while process.getProcById(proc.id) ~= nil do waitTick() end
+  if new_stdin ~= stdin and new_stdin ~= nil then new_stdin:close() end
+  if new_stdout ~= stdout and new_stdout ~= nil then new_stdout:close() end
+end
+
+function findCommand(cmd, args)
+  if cmd == nil then return end
+  path = cmd
+  if not fs.exists(path) then
+    if not fs.exists(fs.combine(workDir,cmd)) then
+      if fs.exists("/sbin/" .. cmd) then path = "/sbin/"..cmd
+      elseif fs.exists("/bin/" .. cmd) then path = "/bin/"..cmd end
+    else path = fs.combine(workDir,cmd) end
+  end
+  if string.sub(path,1,1) ~= "/" then path = "/"..path end
+  return path
+end  
+
+function parseArgs(args)
+  local str, delim, argt, argc = "", " ", {}, 0
+  for i=1,#args do
+    local argch = string.sub(args,i,i)
+    if argch == delim then
+      argc = argc + 1
+      argt[argc], delim = str, " "
+      str = ""
+    elseif argch == "'" then delim = "'"
+    else str = str .. argch end
+  end
+  if str ~= "" then argc = argc + 1 argt[argc] = str end
+  return argt
+end
+
+function unparseArgs(args, istart, iend, delim)
+  local str = ""
+  istart = istart or 1
+  iend = iend or #args
+  delim = delim or " "
+  for i=istart,iend do
+    str = str .. args[i]
+    if i<iend then str = str .. delim end
+  end
+  return str
+end
+
+function runCmd(str, stdin_def, stdout_def)
+  -- print("Launching " .. str)
+  stdin_def = stdin_def or stdin
+  stdout_def = stdout_def or stdout
+  local strargs = parseArgs(str)
+  for i=1,#strargs do
+    if strargs[i] == "|" and i<#strargs then
+      local tmpstream = stream.create_memory("pipe", false)
+      runCmd(unparseArgs(strargs,1,i-1), stdin_def, tmpstream)
+      runCmd(unparseArgs(strargs,i+1), tmpstream, stdout_def)
+      tmpstream:clear()
+      return
+    end
+  end
+  cmd = strargs[1];
+  if builtinCommands[cmd] ~= nil then
+    local cfunc = builtinCommands[cmd]
+    cfunc(strargs)
+  elseif (cmd ~= nil) then
+    path = findCommand(cmd,strargs)
+    if fs.exists(path) then execute(path, strargs, stdin_def, stdout_def)
+    else printf("assh: command %s not found\n", cmd) end
+  end
+end
+
+while true do
+  printf("[%s@%s %s]$ ",PROC_USER,HOSTNAME,parseDir(workDir))
+  stdin:clear()
+  stream.link_write(stdin,stdout,true) -- ECHO ON
+  local str = gets()
+  stream.unlink_write(stdin) -- ECHO OFF
+  runCmd(str)
+  waitTick()
+end

@@ -1,0 +1,8 @@
+local args = { ... }
+
+if #args == 2 then
+  local ndir = stddisk.fixPath(PROC_CWD,args[2])
+  if not fs.exists(ndir) then printf("rmdir: directory does not exist\n") return end
+  if not fs.isDir(ndir) then printf("rmdir: directory is a file\n") return end
+  fs.delete(ndir)
+else printf("rmdir: no directory specified\n") return end

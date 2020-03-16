@@ -1,0 +1,47 @@
+stddisk = {}
+
+stddisk.mountData = {}
+
+function stddisk.fixPath(cwd,d)
+  if d == nil then return "" end
+  if string.sub(d,1,1) ~= "/" then return fs.combine(cwd,d)
+  else return d end
+end
+
+function stddisk.getMountData(side)
+  local mData = {}
+  if not validSide(side) then
+    if side == "rom" then
+      mData.isAudio, mData.type, mData.label, mData.id, mData.path = false, "ccrom", "rom", nil, "/rom"
+      mData.permissions = 5
+      return mData
+    elseif side == "root" then
+      mData.isAudio, mData.type, mData.label, mData.id, mData.path = false, "cchdd", "root", nil, "/"
+      mData.permissions = 7
+      return mData
+    else return nil end
+  elseif not disk.isPresent(side) then return nil end
+  mData.isAudio = disk.hasAudio(side)
+  if not mData.isAudio then mData.label, mData.type, mData.permissions = disk.getAudioTitle(side), "music", 4
+  else mData.label, mData.type, mData.permissions = disk.getLabel(side), "ccfdd", 7 end
+  mData.id = disk.getDiskID(side)
+  mData.path = disk.getMountPath(side)
+  return mData
+end
+
+function stddisk.getMountList()
+  return mountData
+end
+
+function stddisk.initMounts()
+  local mountData = {}
+  for side,_ in ipairs(getValidSides()) do
+    mountData[side] = stddisk.getMountData(side)
+  end
+  -- Hardcoded mounts
+  mountData["rom"] = stddisk.getMountData("rom")
+  mountData["root"] = stddisk.getMountData("root")
+  return mountData
+end
+
+stddisk.mountData = stddisk.initMounts()

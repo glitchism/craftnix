@@ -1,0 +1,44 @@
+local oldsleep = sleep
+
+dofile("/lib/stdlib")
+dofile("/lib/stream")
+dofile("/lib/stdio")
+dofile("/lib/stddisk")
+dofile("/lib/process") -- doesn't work with loadAPI
+dofile("/lib/console")
+dofile("/lib/key")
+
+local KERNEL_VERSION = "0.05"
+
+con = console.create_hw()
+stream.link_write(stream.stdout,con,true)
+stdin = stream.stdin
+stdout = stream.stdout
+
+printf("KERNEL version %s\n",KERNEL_VERSION)
+local proc = process.create("/sbin/init")
+printf("Booting %s\n", proc.cwd)
+proc:exec("/",nil,"root",stdin,stdout)
+
+function eventHandler()
+  process.gc()	
+  while true do
+    local event, p1, p2, p3, p4, p5 = os.pullEventRaw()
+    if event == "char" then
+      stream.stdin:putc(p1)
+    elseif event == "key" then
+      if p1 == ENTER then stream.stdin:puti(10)
+      elseif p1 == TAB then stream.stdin:puti(9)
+      elseif p1 == BACKSPACE then stream.stdin:puti(8)
+      else stdkey:puti(p1) end
+      if p1 == ESCAPE then stream.stdin:puti(27) end
+    elseif event == "os_wake" and process.suspended(p1) == true then
+      local proc = process.getProcById(p1)
+      proc:exec()
+    elseif event == "timer" and p1 == process.NEXT_GC then
+      process.gc()
+    end
+  end
+end
+
+eventHandler()

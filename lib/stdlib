@@ -1,0 +1,15 @@
+-- /rom/apis/rednet
+sides = { left = true, right = true, top = true, bottom = true, front = true, back = true }
+function getValidSides() return sides end
+function validSide(tside) return (sides[tside] == true) end
+-- http://lua-users.org/wiki/SplitJoin
+function strsplit(str,sep)
+        local sep, fields = sep or ":", {}
+        local pattern = string.format("([^%s]+)", sep)
+        string.gsub(str, pattern, function(c) fields[#fields+1] = c end)
+        return fields
+end
+
+function sleep(s) os.queueEvent("os_gc", PROC_ID) coroutine.yield("sleep",s) end
+function msleep(ms) sleep(ms/1000) end
+function waitTick() os.queueEvent("os_wake", PROC_ID) sleep(0.05) end

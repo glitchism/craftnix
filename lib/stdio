@@ -1,0 +1,54 @@
+function getc(loc)
+  loc = loc or (stdin or stream.get("stdin"))
+  if loc == nil then return end
+  return loc:getc()
+end
+
+function gets(loc, delim)
+  loc = loc or (stdin or stream.get("stdin"))
+  return loc:gets(delim)
+end
+
+function putc(char, loc)
+  loc = loc or (getfenv().stdout or stream.get("stdout"))
+  if loc == nil then return end
+  loc:putc(char)
+end
+
+function getchar()
+  getc(stdin or stream.get("stdin"))
+end
+
+function putchar(char)
+  putc(char, (getfenv().stdout or stream.get("stdout")))
+end
+
+function puts(str, loc)
+  loc = loc or (getfenv().stdout or stream.get("stdout"))
+  if loc == nil then return end
+  for i=1,#str do
+    putc(string.sub(str,i,i),loc)
+  end
+end
+
+sprintf = string.format
+
+function printf(str, ...)
+  if str == nil then return end
+  puts(string.format(str, unpack(arg)))
+end
+
+function fopen(fn, mo)
+  return stream.create_file(fn,mo)
+end
+
+function fgetc(fn)
+  return fn:getc()
+end
+function fputc(fn,d)
+  fn:putc(d)
+end
+
+function fclose(fn)
+  fn:close()
+end
